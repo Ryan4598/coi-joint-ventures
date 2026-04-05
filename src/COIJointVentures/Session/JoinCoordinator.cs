@@ -25,10 +25,12 @@ internal sealed class JoinCoordinator
     private readonly SaveFileManager _saveFileManager;
     private readonly HashSet<string> _joiningPeers = new();
     private readonly List<string> _joiningNames = new();
+    private readonly List<string> _lateJoiners = new(); // peers that arrived after save was sent
     private string _syncSaveName = string.Empty;
     private DateTime _phaseStarted;
     private int _pauseFrameDelay;
     private bool _saveCompletedFlag;
+    private byte[]? _lastSaveBytes; // cached so late joiners can get the same save
 
     public JoinCoordinator(ManualLogSource log, SaveManagerBridge saveBridge, SaveFileManager saveFileManager)
     {
@@ -67,8 +69,17 @@ internal sealed class JoinCoordinator
         {
             StartJoinFlow();
         }
+        else if (Phase == JoinPhase.SendingSave || Phase == JoinPhase.WaitingForClients)
+        {
+            // save was already sent to earlier peers — queue this peer for a
+            // separate send once we have the bytes
+            _lateJoiners.Add(peerId);
+            _log.LogInfo($"[JoinCoord] Late joiner '{playerName}' queued for save send.");
+        }
         else
         {
+            // still pausing or waiting for save — they'll be included in the
+            // initial SendSaveToClients call
             _log.LogInfo($"[JoinCoord] Join already in progress ({Phase}), '{playerName}' will receive same save.");
         }
     }
@@ -100,6 +111,9 @@ internal sealed class JoinCoordinator
                 TickSendingSave();
                 break;
         }
+
+        // send save to anyone who joined after the initial send
+        FlushLateJoiners();
     }
 
     public void OnClientReady(string peerId)
@@ -263,10 +277,33 @@ internal sealed class JoinCoordinator
             _log.LogInfo($"[JoinCoord] Save hash (MD5): {hash}, size: {saveBytes.Length}");
         }
 
+        // cache for late joiners
+        _lastSaveBytes = saveBytes;
+
         // queue the chunks — they'll be paced by TickPendingSends
         SendSaveToClients?.Invoke(_joiningPeers, saveBytes);
         _log.LogInfo($"[JoinCoord] Chunks queued for {_joiningPeers.Count} joining client(s). Waiting for delivery...");
         _saveQueued = true;
+    }
+
+    private void FlushLateJoiners()
+    {
+        if (_lateJoiners.Count == 0 || _lastSaveBytes == null) return;
+
+        var batch = new List<string>(_lateJoiners);
+        _lateJoiners.Clear();
+
+        _log.LogInfo($"[JoinCoord] Sending save to {batch.Count} late joiner(s).");
+        SendSaveToClients?.Invoke(batch, _lastSaveBytes);
+
+        // if we already moved to WaitingForClients, go back to SendingSave
+        // so we wait for the paced sends to finish
+        if (Phase == JoinPhase.WaitingForClients)
+        {
+            Phase = JoinPhase.SendingSave;
+            _saveQueued = true;
+            _phaseStarted = DateTime.UtcNow;
+        }
     }
 
     private void Cleanup()
@@ -276,5 +313,7 @@ internal sealed class JoinCoordinator
         Phase = JoinPhase.Idle;
         _joiningPeers.Clear();
         _joiningNames.Clear();
+        _lateJoiners.Clear();
+        _lastSaveBytes = null;
     }
 }
