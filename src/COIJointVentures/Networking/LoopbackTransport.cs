@@ -8,7 +8,6 @@ internal sealed class LoopbackTransport : INetworkTransport
 {
     private readonly ManualLogSource _log;
     private string? _localPeerId;
-    private string? _hostPeerId;
 
     public LoopbackTransport(ManualLogSource log)
     {
@@ -28,14 +27,12 @@ internal sealed class LoopbackTransport : INetworkTransport
     public void StartHost(string localPeerId)
     {
         _localPeerId = localPeerId;
-        _hostPeerId = localPeerId;
         _log.LogInfo($"Loopback transport started as solo host '{localPeerId}'.");
     }
 
     public void StartClient(string localPeerId, string hostPeerId)
     {
         _localPeerId = localPeerId;
-        _hostPeerId = hostPeerId;
         _log.LogWarning("Loopback transport does not support client mode.");
     }
 

@@ -194,7 +194,7 @@ internal sealed class MultiplayerSession : IDisposable
 
         // remember this ID so we drop the echo when host sends it back
         _outboundCommandIds.Add(envelope.CommandId);
-        _pendingCommands.Enqueue(new PendingCommand(envelope, apply));
+        _pendingCommands.Enqueue(new PendingCommand(envelope));
         _transport.SendToHost(ProtocolCodec.WrapGameCommand(_codec.Encode(envelope)));
     }
 
