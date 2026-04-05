@@ -1,0 +1,134 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # -- grab the version from Version.props so we can tag the release --
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Version.props
+          $v = $props.Project.PropertyGroup.JointVenturesVersion
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+          echo "tag=v$v" >> $env:GITHUB_OUTPUT
+
+      # -- download BepInEx for compilation --
+      - name: Download BepInEx
+        shell: pwsh
+        run: |
+          $headers = @{ "User-Agent" = "JointVentures-CI" }
+          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/BepInEx/BepInEx/releases" -Headers $headers
+          $release = $releases | Where-Object { $_.tag_name -match "^v5\." -and -not $_.prerelease } | Select-Object -First 1
+          $asset = $release.assets | Where-Object { $_.name -match "^BepInEx_win_x64_.*\.zip$" } | Select-Object -First 1
+
+          Write-Host "Downloading $($asset.name)..."
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile bepinex.zip
+
+          $extract = "bepinex-extract"
+          Expand-Archive -Path bepinex.zip -DestinationPath $extract
+
+          New-Item -ItemType Directory -Path "bepinex-bundle\core" -Force | Out-Null
+          New-Item -ItemType Directory -Path "bepinex-bundle\doorstop" -Force | Out-Null
+          Copy-Item "$extract\BepInEx\core\*.dll" -Destination "bepinex-bundle\core"
+          Copy-Item "$extract\winhttp.dll" -Destination "bepinex-bundle\doorstop"
+
+          Remove-Item bepinex.zip, $extract -Recurse -Force
+
+      # -- download game reference DLLs from the deps release --
+      - name: Download game references
+        shell: pwsh
+        run: |
+          $headers = @{
+            "User-Agent" = "JointVentures-CI"
+            "Authorization" = "Bearer ${{ secrets.GITHUB_TOKEN }}"
+          }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/deps" -Headers $headers
+          $asset = $release.assets | Where-Object { $_.name -eq "game-refs.zip" } | Select-Object -First 1
+
+          if (-not $asset) { throw "game-refs.zip not found on the 'deps' release" }
+
+          Write-Host "Downloading game-refs.zip (asset id: $($asset.id))..."
+          # use the API asset URL with octet-stream accept - browser_download_url redirects and breaks with auth headers
+          $dlHeaders = @{
+            "Accept" = "application/octet-stream"
+            "Authorization" = "Bearer ${{ secrets.GITHUB_TOKEN }}"
+            "User-Agent" = "JointVentures-CI"
+          }
+          Invoke-WebRequest -Uri "https://api.github.com/repos/${{ github.repository }}/releases/assets/$($asset.id)" -OutFile game-refs.zip -Headers $dlHeaders
+
+          # extract into a known location the .csproj can reference
+          New-Item -ItemType Directory -Path "game-refs" -Force | Out-Null
+          Expand-Archive -Path game-refs.zip -DestinationPath "game-refs"
+          Remove-Item game-refs.zip
+
+      # -- build the plugin (point ManagedDir at our downloaded refs) --
+      - name: Build plugin
+        shell: pwsh
+        run: |
+          dotnet build src\COIJointVentures\COIJointVentures.csproj `
+            -c Release `
+            -p:ManagedDir="${{ github.workspace }}\game-refs"
+
+      # -- create plugin bundle zip --
+      - name: Create plugin bundle
+        shell: pwsh
+        run: |
+          $staging = "dist\.staging"
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item "src\COIJointVentures\bin\Release\net472\COIJointVentures.dll" -Destination $staging
+          Copy-Item "src\COIJointVentures\bin\Release\net472\COIJointVentures.pdb" -Destination $staging -ErrorAction SilentlyContinue
+
+          $zipPath = "src\Launcher\plugin-bundle.zip"
+          Compress-Archive -Path "$staging\*" -DestinationPath $zipPath -CompressionLevel Optimal
+          Remove-Item $staging -Recurse -Force
+
+      # -- publish launcher --
+      - name: Publish launcher
+        shell: pwsh
+        run: |
+          dotnet publish src\Launcher\Launcher.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:PublishTrimmed=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o dist
+
+          # clean up pdb
+          Get-ChildItem dist -Filter "*.pdb" | Remove-Item -Force
+          # clean up the embedded zip
+          Remove-Item "src\Launcher\plugin-bundle.zip" -Force -ErrorAction SilentlyContinue
+
+      # -- copy standalone DLL for manual installs --
+      - name: Copy standalone DLL
+        shell: pwsh
+        run: |
+          Copy-Item "src\COIJointVentures\bin\Release\net472\COIJointVentures.dll" -Destination dist
+
+      # -- create or update the github release --
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Joint Ventures ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/JointVentures.exe
+            dist/COIJointVentures.dll

@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+packages/
+artifacts/
+dist/
+.tools/
+docs/
+tools/
+artifacts-cmd-types.txt
+bepinex-bundle/
+game-refs/
+src/Launcher/plugin-bundle.zip
+
