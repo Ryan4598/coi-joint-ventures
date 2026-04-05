@@ -275,13 +275,9 @@ internal sealed class WaypointManager
 
     private static void DrawArrow(Vector2 pos, Vector2 dir, UnityEngine.Color color)
     {
-        // pick arrow character based on direction octant
-        // dir is in GUI space (Y-down)
-        var angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg; // 0=right, 90=down
-        // normalize to 0..360
+        var angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
         if (angle < 0) angle += 360f;
 
-        // 8 directions, 45 degree slices, offset by 22.5 so 0deg centers on "right"
         string arrow;
         if (angle < 22.5f || angle >= 337.5f) arrow = "\u25B6";      // right ▶
         else if (angle < 67.5f) arrow = "\u25E2";                     // down-right ◢
@@ -296,17 +292,15 @@ internal sealed class WaypointManager
         {
             _arrowStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 28,
+                fontSize = 72,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = UnityEngine.Color.white }
             };
         }
 
-        var prevColor = GUI.color;
-        GUI.color = color;
-        GUI.Label(new Rect(pos.x - 18, pos.y - 18, 36, 36), arrow, _arrowStyle);
-        GUI.color = prevColor;
+        _arrowStyle.normal.textColor = color;
+        var size = 80f;
+        GUI.Label(new Rect(pos.x - size * 0.5f, pos.y - size * 0.5f, size, size), arrow, _arrowStyle);
     }
 
     private static void SetupMaterial(GameObject go, Color color, float emissionStrength)
