@@ -76,10 +76,11 @@ internal sealed class ChatPanelUI
         {
             if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
             {
-                SendMessage();
-                evt.StopPropagation();
+                evt.StopImmediatePropagation();
+                // schedule so the TextField doesn't swallow the event after us
+                _inputField.schedule.Execute(SendMessage);
             }
-        });
+        }, TrickleDown.TrickleDown);
         inputRow.Add(_inputField);
 
         var sendBtn = UIHelpers.MakeButton("Send", SendMessage, new Color(0.22f, 0.45f, 0.65f));
