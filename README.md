@@ -15,7 +15,7 @@ One player hosts their current save, and friends connect via Steam (or LAN). The
 - **Join by lobby code** - share a code with friends who can paste it to connect
 - **Save sync** - when someone joins, the game pauses for everyone, the host creates a fresh save, and transfers it to the joining player automatically
 - **Command replication** - most gameplay commands are synced between players (building, research, speed controls, vehicle assignments, fleet management, terrain, etc.)
-- **In-game chat** - F7 opens a chat panel with player messages and an activity feed showing what everyone is doing (e.g. "Ryan placed Storage Fluid T2")
+- **In-game chat** - F9 opens a chat panel with player messages and an activity feed showing what everyone is doing (e.g. "Ryan placed Storage Fluid T2")
 - **Session management** - if the host exits to menu, all clients are disconnected and sent back to menu. Clients can't load saves while connected.
 
 ### What hasn't really been tested
