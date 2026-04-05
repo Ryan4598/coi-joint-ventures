@@ -93,8 +93,9 @@ If you'd rather have the mod always loaded, you can install it the traditional B
 
 ### Controls
 
-- **F9** - Chat & activity log (only available while in a session)
 - **F8** - Multiplayer panel (host/join/status)
+- **F9** - Chat & activity log (only available while in a session)
+- **Ctrl+Click** - Place a waypoint marker visible to all players (color-coded per player, lasts 7 seconds, off-screen arrows point toward distant markers)
 
 ### Notes
 
