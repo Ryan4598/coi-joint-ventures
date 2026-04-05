@@ -16,4 +16,7 @@ internal sealed class JoinResponse
 
     [DataMember(Order = 4)]
     public string AssignedPeerId { get; set; } = string.Empty;
+
+    [DataMember(Order = 5)]
+    public int ColorIndex { get; set; }
 }

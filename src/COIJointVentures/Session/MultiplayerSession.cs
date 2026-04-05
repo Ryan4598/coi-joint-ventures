@@ -26,6 +26,7 @@ internal sealed class MultiplayerSession : IDisposable
     private readonly HashSet<Guid> _seenCommandIds = new();
     private readonly Dictionary<string, int> _peerColors = new();
     private int _nextColorIndex;
+    private int _localColorIndex; // assigned by host, used for local waypoint display
     private long _nextSequence;
 
     private ServerConfig? _serverConfig;
@@ -269,12 +270,12 @@ internal sealed class MultiplayerSession : IDisposable
         ActiveSince = DateTime.UtcNow;
         StatusMessage = "Connected to server, playing.";
 
-        // clear join sync flag — we might have received JoinSyncBegin about ourselves
-        IsJoinSyncActive = false;
-        JoinSyncPlayerName = string.Empty;
+        // keep the overlay up until the host says everyone's in
+        IsJoinSyncActive = true;
+        JoinSyncPlayerName = "players";
 
         _transport.SendToHost(ProtocolCodec.WrapClientReady());
-        _log.LogInfo("Save loaded, sent ClientReady to host. Session is now active.");
+        _log.LogInfo("Save loaded, sent ClientReady to host. Waiting for JoinSyncEnd.");
     }
 
     public void Disconnect()
@@ -420,7 +421,8 @@ internal sealed class MultiplayerSession : IDisposable
         {
             Accepted = true,
             ServerName = _serverConfig?.ServerName ?? "COI Server",
-            AssignedPeerId = senderPeerId
+            AssignedPeerId = senderPeerId,
+            ColorIndex = GetOrAssignColor(senderPeerId)
         };
         _transport.SendToClient(senderPeerId, ProtocolCodec.WrapJoinAccepted(acceptance));
         _log.LogInfo($"Accepted '{request.PlayerName}' (peer={senderPeerId}). Starting coordinated join...");
@@ -548,9 +550,10 @@ internal sealed class MultiplayerSession : IDisposable
         }
 
         var response = ProtocolCodec.DecodeJoinResponse(payload);
+        _localColorIndex = response.ColorIndex;
         State = ConnectionState.ReceivingSave;
         StatusMessage = $"Accepted by '{response.ServerName}', receiving save...";
-        _log.LogInfo(StatusMessage);
+        _log.LogInfo($"{StatusMessage} (assigned color {_localColorIndex})");
     }
 
     private void HandleJoinRejected(byte[] payload)
@@ -758,7 +761,7 @@ internal sealed class MultiplayerSession : IDisposable
             SenderPeerId = LocalPeerId,
             SenderName = LocalPlayerName,
             X = x, Y = y, Z = z,
-            ColorIndex = GetOrAssignColor(LocalPeerId)
+            ColorIndex = Mode == MultiplayerMode.Host ? GetOrAssignColor(LocalPeerId) : _localColorIndex
         };
 
         var wrapped = ProtocolCodec.WrapWaypoint(wp);
