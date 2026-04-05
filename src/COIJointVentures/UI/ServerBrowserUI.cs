@@ -174,7 +174,7 @@ internal sealed class ServerBrowserUI
         header.Add(MakeHeaderLabel("Server Name", 0, true));
         header.Add(MakeHeaderLabel("Host", 130, false));
         header.Add(MakeHeaderLabel("Players", 70, false));
-        header.Add(MakeHeaderLabel("", 24, false));
+        header.Add(MakeHeaderLabel("", 34, false));
         _root.Add(header);
 
         // ---- server list (scrollable) ----
@@ -396,7 +396,7 @@ internal sealed class ServerBrowserUI
     {
         _serverListContainer.Clear();
 
-        var filtered = _activeTab == 1 ? _lobbies.Where(l => l.Owner.IsFriend).ToArray() : _lobbies;
+        var filtered = _activeTab == 1 ? _lobbies.Where(l => IsHostedByFriend(l)).ToArray() : _lobbies;
 
         if (filtered.Length == 0)
         {
@@ -428,7 +428,7 @@ internal sealed class ServerBrowserUI
 
     private void UpdateBottomBar()
     {
-        var filtered = _activeTab == 1 ? _lobbies.Where(l => l.Owner.IsFriend).ToArray() : _lobbies;
+        var filtered = _activeTab == 1 ? _lobbies.Where(l => IsHostedByFriend(l)).ToArray() : _lobbies;
 
         if (_selectedIndex >= 0 && _selectedIndex < filtered.Length)
         {
@@ -454,7 +454,7 @@ internal sealed class ServerBrowserUI
     private VisualElement MakeServerRow(Lobby lobby, bool selected, bool even)
     {
         var serverName = lobby.GetData("name") ?? "Unknown Server";
-        var hostName = lobby.Owner.Name ?? "???";
+        var hostName = lobby.GetData("host_name") ?? lobby.Owner.Name ?? "???";
         var hasPass = lobby.GetData("password") == "1";
         var members = lobby.MemberCount;
         var max = lobby.MaxMembers;
@@ -472,7 +472,7 @@ internal sealed class ServerBrowserUI
         row.Add(MakeRowLabel(serverName, 0, true, selected));
         row.Add(MakeRowLabel(hostName, 130, false, selected));
         row.Add(MakeRowLabel($"{members} / {max}", 70, false, selected));
-        row.Add(MakeRowLabel(hasPass ? "\u26BF" : "", 24, false, selected));
+        row.Add(MakeRowLabel(hasPass ? "[PW]" : "", 34, false, selected));
 
         AddHoverEffect(row);
         return row;
@@ -480,7 +480,7 @@ internal sealed class ServerBrowserUI
 
     private void OnConnect()
     {
-        var filtered = _activeTab == 1 ? _lobbies.Where(l => l.Owner.IsFriend).ToArray() : _lobbies;
+        var filtered = _activeTab == 1 ? _lobbies.Where(l => IsHostedByFriend(l)).ToArray() : _lobbies;
         if (_selectedIndex < 0 || _selectedIndex >= filtered.Length) return;
 
         var lobby = filtered[_selectedIndex];
@@ -519,7 +519,7 @@ internal sealed class ServerBrowserUI
             if (results != null)
             {
                 _lobbies = results
-                    .OrderByDescending(l => l.Owner.IsFriend)
+                    .OrderByDescending(l => IsHostedByFriend(l))
                     .ThenBy(l => l.GetData("name") ?? "")
                     .ToArray();
             }
@@ -605,6 +605,17 @@ internal sealed class ServerBrowserUI
         if (expand) lbl.style.flexGrow = 1;
         else lbl.style.width = width;
         return lbl;
+    }
+
+    private static bool IsHostedByFriend(Lobby lobby)
+    {
+        var hostId = lobby.GetData("host_id");
+        if (!string.IsNullOrEmpty(hostId) && ulong.TryParse(hostId, out var id))
+        {
+            return new Friend(new SteamId { Value = id }).IsFriend;
+        }
+
+        return lobby.Owner.IsFriend;
     }
 
     private static Label MakeRowLabel(string text, int width, bool expand, bool selected)

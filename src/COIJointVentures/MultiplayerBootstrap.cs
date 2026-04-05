@@ -117,6 +117,7 @@ internal sealed class MultiplayerBootstrap : IDisposable
         Session.StartAsHost(peerId, config, _saveManager, resolvedSavePath);
 
         transport.SetLobbyData("name", config.ServerName);
+        transport.SetLobbyData("host_name", SteamPlayerName ?? peerId);
         if (config.HasPassword)
         {
             transport.SetLobbyData("password", "1");
