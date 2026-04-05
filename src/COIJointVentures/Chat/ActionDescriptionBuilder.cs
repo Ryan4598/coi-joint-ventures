@@ -109,80 +109,46 @@ internal static class ActionDescriptionBuilder
 
         try
         {
-            // dig through the command to find what building it is
             var configDataField = command.GetType().GetField("ConfigData", Flags);
-            if (configDataField == null)
-            {
-                return null;
-            }
+            if (configDataField == null) return null;
 
             var configData = configDataField.GetValue(command);
-            if (configData == null)
-            {
-                return null;
-            }
+            if (configData == null) return null;
 
-            // grab the first element if there is one
             var lengthProp = configData.GetType().GetProperty("Length");
-            if (lengthProp == null || (int)lengthProp.GetValue(configData)! == 0)
-            {
-                return null;
-            }
+            if (lengthProp == null || (int)lengthProp.GetValue(configData)! == 0) return null;
 
+            object? firstConfig = null;
             var itemProp = configData.GetType().GetProperty("Item", new[] { typeof(int) });
-            if (itemProp == null)
-            {
-                return null;
-            }
+            if (itemProp != null)
+                firstConfig = itemProp.GetValue(configData, new object[] { 0 });
+            else if (configData is IEnumerable enumerable)
+                foreach (var item in enumerable) { firstConfig = item; break; }
 
-            var firstConfig = itemProp.GetValue(configData, new object[] { 0 });
-            if (firstConfig == null)
-            {
-                return null;
-            }
+            if (firstConfig == null) return null;
 
-            // get the prototype to extract the name
+            // Prototype field is Option<Proto> — its ToString() gives "Some: SmokeStack (MachineProto)"
+            // just parse the name out of that
             var protoField = firstConfig.GetType().GetField("Prototype", Flags);
-            if (protoField == null)
+            if (protoField != null)
             {
-                return null;
+                var protoOption = protoField.GetValue(firstConfig);
+                if (protoOption != null)
+                {
+                    var str = protoOption.ToString();
+                    // parse "Some: SmokeStack (MachineProto)" → "SmokeStack"
+                    if (str != null && str.StartsWith("Some: "))
+                    {
+                        var name = str.Substring(6); // strip "Some: "
+                        var parenIdx = name.IndexOf(" (");
+                        if (parenIdx > 0)
+                            name = name.Substring(0, parenIdx);
+                        return FormatProtoId(name);
+                    }
+                }
             }
 
-            var protoOption = protoField.GetValue(firstConfig);
-            if (protoOption == null)
-            {
-                return null;
-            }
-
-            var hasValueProp = protoOption.GetType().GetProperty("HasValue");
-            if (hasValueProp == null || !(bool)hasValueProp.GetValue(protoOption)!)
-            {
-                return null;
-            }
-
-            var valueProp = protoOption.GetType().GetProperty("Value");
-            var proto = valueProp?.GetValue(protoOption);
-            if (proto == null)
-            {
-                return null;
-            }
-
-            var idProp = proto.GetType().GetProperty("Id");
-            var id = idProp?.GetValue(proto);
-            if (id == null)
-            {
-                return null;
-            }
-
-            var valueField = id.GetType().GetField("Value");
-            var idString = valueField?.GetValue(id) as string;
-
-            if (string.IsNullOrEmpty(idString))
-            {
-                return null;
-            }
-
-            return FormatProtoId(idString!);
+            return null;
         }
         catch
         {
