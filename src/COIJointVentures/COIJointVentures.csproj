@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\Version.props" />
+  <PropertyGroup>
+    <Version>$(JointVenturesVersion)</Version>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>COIJointVentures</AssemblyName>
+    <RootNamespace>COIJointVentures</RootNamespace>
+    <CaptainOfIndustryDir>D:\Games\Steam\steamapps\common\Captain of Industry</CaptainOfIndustryDir>
+    <BepInExCoreDir Condition="Exists('$(CaptainOfIndustryDir)\BepInEx\core')">$(CaptainOfIndustryDir)\BepInEx\core</BepInExCoreDir>
+    <BepInExCoreDir Condition="!Exists('$(CaptainOfIndustryDir)\BepInEx\core')">$(MSBuildThisFileDirectory)..\..\bepinex-bundle\core</BepInExCoreDir>
+    <ManagedDir>$(CaptainOfIndustryDir)\Captain of Industry_Data\Managed</ManagedDir>
+    <PluginDeployDir>$(CaptainOfIndustryDir)\BepInEx\plugins\COIJointVentures</PluginDeployDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(BepInExCoreDir)\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExCoreDir)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(ManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(ManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(ManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(ManagedDir)\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(ManagedDir)\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIElementsModule">
+      <HintPath>$(ManagedDir)\UnityEngine.UIElementsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(ManagedDir)\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Mafi">
+      <HintPath>$(ManagedDir)\Mafi.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Mafi.Core">
+      <HintPath>$(ManagedDir)\Mafi.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Facepunch.Steamworks.Win64">
+      <HintPath>$(ManagedDir)\Facepunch.Steamworks.Win64.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Generate a const so BepInPlugin attribute can use Version.props value -->
+  <Target Name="GenerateVersionConst" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <VersionConstFile>$(IntermediateOutputPath)VersionConst.g.cs</VersionConstFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(VersionConstFile)" Overwrite="true" Lines="namespace COIJointVentures%3B%0Ainternal static class VersionConst { public const string Value = &quot;$(JointVenturesVersion)&quot;%3B }" />
+    <ItemGroup>
+      <Compile Include="$(VersionConstFile)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="DeployPlugin" AfterTargets="Build" Condition="Exists('$(CaptainOfIndustryDir)\BepInEx\plugins')">
+    <MakeDir Directories="$(PluginDeployDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginDeployDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(PluginDeployDir)" SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+  </Target>
+
+</Project>
