@@ -174,7 +174,7 @@ internal sealed class ServerBrowserUI
         header.Add(MakeHeaderLabel("Server Name", 0, true));
         header.Add(MakeHeaderLabel("Host", 130, false));
         header.Add(MakeHeaderLabel("Players", 70, false));
-        header.Add(MakeHeaderLabel("", 34, false));
+        header.Add(MakeHeaderLabel("", 24, false));
         _root.Add(header);
 
         // ---- server list (scrollable) ----
@@ -472,7 +472,27 @@ internal sealed class ServerBrowserUI
         row.Add(MakeRowLabel(serverName, 0, true, selected));
         row.Add(MakeRowLabel(hostName, 130, false, selected));
         row.Add(MakeRowLabel($"{members} / {max}", 70, false, selected));
-        row.Add(MakeRowLabel(hasPass ? "[PW]" : "", 34, false, selected));
+        if (hasPass)
+        {
+            var lockIcon = new Image();
+            lockIcon.image = GetLockTexture();
+            lockIcon.style.width = 14;
+            lockIcon.style.height = 14;
+            lockIcon.style.alignSelf = Align.Center;
+            lockIcon.tintColor = selected ? Color.white : new Color(0.9f, 0.75f, 0.2f);
+            var lockWrap = new VisualElement();
+            lockWrap.style.width = 24;
+            lockWrap.style.justifyContent = Justify.Center;
+            lockWrap.style.alignItems = Align.Center;
+            lockWrap.Add(lockIcon);
+            row.Add(lockWrap);
+        }
+        else
+        {
+            var spacer = new VisualElement();
+            spacer.style.width = 24;
+            row.Add(spacer);
+        }
 
         AddHoverEffect(row);
         return row;
@@ -616,6 +636,57 @@ internal sealed class ServerBrowserUI
         }
 
         return lobby.Owner.IsFriend;
+    }
+
+    private static Texture2D? _lockTex;
+
+    private static Texture2D GetLockTexture()
+    {
+        if (_lockTex != null) return _lockTex;
+
+        // 16x16 procedural padlock icon
+        const int s = 16;
+        _lockTex = new Texture2D(s, s, TextureFormat.ARGB32, false);
+        _lockTex.filterMode = FilterMode.Point;
+        var px = new UnityEngine.Color[s * s];
+
+        // clear
+        for (int i = 0; i < px.Length; i++)
+            px[i] = new UnityEngine.Color(0, 0, 0, 0);
+
+        var white = UnityEngine.Color.white;
+
+        // body (filled rect): x 3..12, y 0..7
+        for (int y = 0; y <= 7; y++)
+            for (int x = 3; x <= 12; x++)
+                px[y * s + x] = white;
+
+        // shackle (U-shape): x 5..10, y 8..14
+        for (int y = 8; y <= 14; y++)
+        {
+            // left bar
+            px[y * s + 5] = white;
+            px[y * s + 6] = white;
+            // right bar
+            px[y * s + 9] = white;
+            px[y * s + 10] = white;
+        }
+        // top of shackle
+        for (int x = 5; x <= 10; x++)
+        {
+            px[14 * s + x] = white;
+            px[13 * s + x] = white;
+        }
+
+        // keyhole (dark cutout in body): x 7..8, y 2..5
+        var hole = new UnityEngine.Color(0, 0, 0, 0);
+        for (int y = 2; y <= 5; y++)
+            for (int x = 7; x <= 8; x++)
+                px[y * s + x] = hole;
+
+        _lockTex.SetPixels(px);
+        _lockTex.Apply();
+        return _lockTex;
     }
 
     private static Label MakeRowLabel(string text, int width, bool expand, bool selected)
