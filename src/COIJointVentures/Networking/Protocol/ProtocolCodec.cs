@@ -86,6 +86,16 @@ internal static class ProtocolCodec
         return DeserializeJson<ChatMessagePayload>(payload);
     }
 
+    public static byte[] WrapWaypoint(WaypointPayload waypoint)
+    {
+        return Wrap(ProtocolMessageType.Waypoint, SerializeJson(waypoint));
+    }
+
+    public static WaypointPayload DecodeWaypoint(byte[] payload)
+    {
+        return DeserializeJson<WaypointPayload>(payload);
+    }
+
     public static string DecodeJoinSyncBegin(byte[] payload)
     {
         return System.Text.Encoding.UTF8.GetString(payload);

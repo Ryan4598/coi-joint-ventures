@@ -24,6 +24,8 @@ internal sealed class MultiplayerSession : IDisposable
     private readonly Dictionary<string, string> _peerNames = new();
     private readonly HashSet<Guid> _outboundCommandIds = new();
     private readonly HashSet<Guid> _seenCommandIds = new();
+    private readonly Dictionary<string, int> _peerColors = new();
+    private int _nextColorIndex;
     private long _nextSequence;
 
     private ServerConfig? _serverConfig;
@@ -359,6 +361,9 @@ internal sealed class MultiplayerSession : IDisposable
                 break;
             case ProtocolMessageType.GameCommand:
                 HandleGameCommand(message.SenderPeerId, payload);
+                break;
+            case ProtocolMessageType.Waypoint:
+                HandleWaypoint(message.SenderPeerId, payload);
                 break;
             default:
                 _log.LogWarning($"Unknown protocol message type: {(byte)msgType} from '{message.SenderPeerId}'.");
@@ -728,6 +733,68 @@ internal sealed class MultiplayerSession : IDisposable
         {
             PluginRuntime.Chat.AddAction(msg.SenderName, msg.Text);
         }
+    }
+
+    // waypoint ping system
+    public event Action<WaypointPayload>? WaypointReceived;
+
+    private int GetOrAssignColor(string peerId)
+    {
+        lock (_peerColors)
+        {
+            if (!_peerColors.TryGetValue(peerId, out var idx))
+            {
+                idx = _nextColorIndex++;
+                _peerColors[peerId] = idx;
+            }
+            return idx;
+        }
+    }
+
+    public void SendWaypoint(float x, float y, float z)
+    {
+        var wp = new WaypointPayload
+        {
+            SenderPeerId = LocalPeerId,
+            SenderName = LocalPlayerName,
+            X = x, Y = y, Z = z,
+            ColorIndex = GetOrAssignColor(LocalPeerId)
+        };
+
+        var wrapped = ProtocolCodec.WrapWaypoint(wp);
+        if (Mode == MultiplayerMode.Host)
+        {
+            _transport.Broadcast(wrapped);
+        }
+        else
+        {
+            _transport.SendToHost(wrapped);
+        }
+
+        // show it locally too
+        WaypointReceived?.Invoke(wp);
+    }
+
+    private void HandleWaypoint(string senderPeerId, byte[] payload)
+    {
+        var wp = ProtocolCodec.DecodeWaypoint(payload);
+
+        // host stamps sender, assigns color, and relays
+        if (Mode == MultiplayerMode.Host && senderPeerId != HostPeerId)
+        {
+            wp.SenderPeerId = senderPeerId;
+            wp.SenderName = ResolvePeerName(senderPeerId);
+            wp.ColorIndex = GetOrAssignColor(senderPeerId);
+            _transport.Broadcast(ProtocolCodec.WrapWaypoint(wp));
+        }
+
+        // don't double-show our own
+        if (string.Equals(wp.SenderPeerId, LocalPeerId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        WaypointReceived?.Invoke(wp);
     }
 
     public void SendChatMessage(string text)
