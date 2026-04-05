@@ -6,6 +6,7 @@ using COIJointVentures.Patches;
 using COIJointVentures.Runtime;
 using COIJointVentures.Session;
 using COIJointVentures.UI;
+using COIJointVentures.Waypoints;
 using HarmonyLib;
 using System;
 using System.IO;
@@ -16,6 +17,7 @@ using UnityEngine;
 namespace COIJointVentures;
 
 [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+[DefaultExecutionOrder(-10000)]
 public sealed class Plugin : BaseUnityPlugin
 {
     public const string PluginGuid = "coi.multiplayer";
@@ -36,6 +38,10 @@ public sealed class Plugin : BaseUnityPlugin
     private bool _showMainPanel;
     private bool _showChatPanel;
     private bool _wasInGame;
+    private WaypointManager? _waypoints;
+    private MultiplayerSession? _hookedSession;
+    private float _lastWaypointTime;
+    private bool _consumeNextClick;
 
     private void Awake()
     {
@@ -137,6 +143,11 @@ public sealed class Plugin : BaseUnityPlugin
 
     private void Update()
     {
+        // waypoint check FIRST — if Ctrl+Click, ResetInputAxes before
+        // the game's input controllers run later this frame
+        HandleWaypointInput();
+        _waypoints?.Update();
+
         if (Input.GetKeyDown(KeyCode.F9))
         {
             var inSession = _bootstrap != null &&
@@ -174,6 +185,7 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 Logger.LogInfo("Host disconnected — returning to main menu.");
                 PluginRuntime.Chat.AddSystem("Host disconnected. Session ended.");
+                _waypoints?.Clear();
                 _bootstrap.Disconnect();
 
                 // always try GoToMainMenu — don't check IsInGame because the
@@ -213,6 +225,7 @@ public sealed class Plugin : BaseUnityPlugin
             if (_wasInGame && !inGame && (session.Mode == MultiplayerMode.Host || session.Mode == MultiplayerMode.Client))
             {
                 Logger.LogInfo("Left game while in multiplayer session — disconnecting.");
+                _waypoints?.Clear();
                 _bootstrap.Disconnect();
             }
 
@@ -233,6 +246,25 @@ public sealed class Plugin : BaseUnityPlugin
     // main menu hint — keep this as OnGUI since it's trivial
     private void OnGUI()
     {
+        // consume the click event that placed a waypoint so the game
+        // doesn't also open the entity interaction menu
+        if (_consumeNextClick && Event.current != null)
+        {
+            if (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseUp)
+            {
+                Event.current.Use();
+            }
+
+            // clear after we've consumed both down and up
+            if (Event.current.type == EventType.Repaint || Event.current.type == EventType.Layout)
+            {
+                _consumeNextClick = false;
+            }
+        }
+
+        // off-screen waypoint arrows
+        _waypoints?.DrawOffScreenIndicators();
+
         if (_bootstrap == null) return;
 
         if (!_showMainPanel && !MainCapture.IsInGame && _bootstrap.Session.Mode == MultiplayerMode.None)
@@ -245,6 +277,86 @@ public sealed class Plugin : BaseUnityPlugin
             };
             GUI.Label(new Rect(10, Screen.height - 35, 350, 30), "Press F8 for Joint Ventures (Multiplayer)", style);
         }
+    }
+
+    private void HandleWaypointInput()
+    {
+        if (_bootstrap == null) return;
+        var session = _bootstrap.Session;
+        if (session.Mode == MultiplayerMode.None) return;
+
+        // hook the session event if it changed
+        if (session != _hookedSession)
+        {
+            if (_hookedSession != null) _hookedSession.WaypointReceived -= OnWaypointReceived;
+            session.WaypointReceived += OnWaypointReceived;
+            _hookedSession = session;
+            _waypoints ??= new WaypointManager();
+        }
+
+        // ctrl+click while in game — 1 second cooldown
+        if (!Input.GetMouseButtonDown(0) || !Input.GetKey(KeyCode.LeftControl)) return;
+        if (!MainCapture.IsInGame) return;
+        if (Time.time - _lastWaypointTime < 1f) return;
+
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        var ray = cam.ScreenPointToRay(Input.mousePosition);
+        Vector3? worldPos = null;
+
+        if (Physics.Raycast(ray, out var hit, 2000f))
+        {
+            worldPos = hit.point;
+        }
+        else
+        {
+            // terrain has no physics collider — intersect a plane to get
+            // approximate XZ, query terrain height, then re-intersect at the
+            // real height so the XZ lines up with where the cursor points
+            var plane = new Plane(Vector3.up, Vector3.zero);
+            if (plane.Raycast(ray, out var dist))
+            {
+                var approx = ray.GetPoint(dist);
+                var terrainY = Waypoints.TerrainHeightQuery.GetHeightAtWorldXZ(approx.x, approx.z, Logger);
+                if (terrainY.HasValue)
+                {
+                    // re-intersect the ray with a plane at the actual terrain height
+                    var correctedPlane = new Plane(Vector3.up, new Vector3(0f, terrainY.Value, 0f));
+                    if (correctedPlane.Raycast(ray, out var correctedDist))
+                    {
+                        var corrected = ray.GetPoint(correctedDist);
+                        // query height again at the corrected XZ for precision
+                        var finalY = Waypoints.TerrainHeightQuery.GetHeightAtWorldXZ(corrected.x, corrected.z, Logger);
+                        worldPos = new Vector3(corrected.x, finalY ?? terrainY.Value, corrected.z);
+                    }
+                    else
+                    {
+                        worldPos = new Vector3(approx.x, terrainY.Value, approx.z);
+                    }
+                }
+                else
+                {
+                    worldPos = approx;
+                }
+            }
+        }
+
+        if (worldPos.HasValue)
+        {
+            _lastWaypointTime = Time.time;
+            _consumeNextClick = true;
+            session.SendWaypoint(worldPos.Value.x, worldPos.Value.y, worldPos.Value.z);
+
+            // nuke all input state so later Update() calls in this frame
+            // don't see the mouse click
+            Input.ResetInputAxes();
+        }
+    }
+
+    private void OnWaypointReceived(Networking.Protocol.WaypointPayload wp)
+    {
+        _waypoints?.Spawn(wp);
     }
 
     private void RunAction(Action action, string description)

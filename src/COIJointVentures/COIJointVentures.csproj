@@ -56,6 +56,10 @@
       <HintPath>$(ManagedDir)\UnityEngine.UIModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(ManagedDir)\UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Mafi">
       <HintPath>$(ManagedDir)\Mafi.dll</HintPath>
       <Private>false</Private>
