@@ -187,38 +187,7 @@ public sealed class Plugin : BaseUnityPlugin
                 PluginRuntime.Chat.AddSystem("Host disconnected. Session ended.");
                 _waypoints?.Clear();
                 _bootstrap.Disconnect();
-
-                // always try GoToMainMenu — don't check IsInGame because the
-                // scheduler might not be ticking (game paused) but we're still
-                // in a save that needs to be exited
-                if (MainCapture.HasMain)
-                {
-                    try
-                    {
-                        var mainInst = MainCapture.MainInstance;
-                        var goToMenu = mainInst?.GetType().GetMethod("GoToMainMenu",
-                            BindingFlags.Public | BindingFlags.Instance);
-                        if (goToMenu != null)
-                        {
-                            var argsType = goToMenu.GetParameters()[0].ParameterType;
-                            var defaultArgs = Activator.CreateInstance(argsType);
-                            goToMenu.Invoke(mainInst, new[] { defaultArgs });
-                            Logger.LogInfo("GoToMainMenu invoked.");
-                        }
-                        else
-                        {
-                            Logger.LogWarning("GoToMainMenu method not found.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogWarning($"Failed to return to menu: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    Logger.LogWarning("MainCapture.HasMain is false — can't navigate to menu.");
-                }
+                MainCapture.TryGoToMainMenu();
             }
 
             // left the game while in a session

@@ -222,6 +222,91 @@ internal static class MainCapture
         _log?.LogInfo($"Captured IMain instance: {__instance.GetType().FullName}");
     }
 
+    public static bool TryGoToMainMenu()
+    {
+        if (_mainInstance == null)
+        {
+            _log?.LogWarning("[MENU] Cannot go to menu: Main instance not captured.");
+            return false;
+        }
+
+        if (_goToMainMenuMethod == null)
+        {
+            _log?.LogWarning("[MENU] Cannot go to menu: GoToMainMenu method not found.");
+            return false;
+        }
+
+        try
+        {
+            var parameters = _goToMainMenuMethod.GetParameters();
+
+            if (parameters.Length == 0)
+            {
+                _goToMainMenuMethod.Invoke(_mainInstance, null);
+            }
+            else
+            {
+                // MainMenuArgs is required and must not be null — construct
+                // it using whatever constructor is available
+                var argsType = parameters[0].ParameterType;
+                object? menuArgs = null;
+
+                // try parameterless constructor
+                var defaultCtor = argsType.GetConstructor(Type.EmptyTypes);
+                if (defaultCtor != null)
+                {
+                    menuArgs = defaultCtor.Invoke(null);
+                }
+                else
+                {
+                    // try constructors with all-optional or value-type params
+                    foreach (var ctor in argsType.GetConstructors())
+                    {
+                        var ctorParams = ctor.GetParameters();
+                        var ctorArgs = new object[ctorParams.Length];
+                        bool canUse = true;
+                        for (int j = 0; j < ctorParams.Length; j++)
+                        {
+                            if (ctorParams[j].HasDefaultValue)
+                                ctorArgs[j] = ctorParams[j].DefaultValue;
+                            else if (ctorParams[j].ParameterType.IsValueType)
+                                ctorArgs[j] = Activator.CreateInstance(ctorParams[j].ParameterType);
+                            else
+                            { canUse = false; break; }
+                        }
+                        if (canUse)
+                        {
+                            menuArgs = ctor.Invoke(ctorArgs);
+                            break;
+                        }
+                    }
+                }
+
+                // last resort: FormatterServices creates an uninitialized object
+                // (skips constructor, fields stay default)
+                if (menuArgs == null)
+                {
+                    menuArgs = System.Runtime.Serialization.FormatterServices
+                        .GetUninitializedObject(argsType);
+                }
+
+                _log?.LogInfo($"[MENU] Constructed {argsType.Name}: {menuArgs}");
+
+                var args = new object[parameters.Length];
+                args[0] = menuArgs;
+                _goToMainMenuMethod.Invoke(_mainInstance, args);
+            }
+
+            _log?.LogInfo("[MENU] GoToMainMenu invoked successfully.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning($"[MENU] GoToMainMenu failed: {ex}");
+            return false;
+        }
+    }
+
     // blocks clients from loading a different save while connected to a server
     private static bool OnLoadGamePrefix()
     {
