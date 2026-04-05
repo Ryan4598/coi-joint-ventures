@@ -169,7 +169,8 @@ internal sealed class MultiplayerSession : IDisposable
         var joinRequest = new JoinRequest
         {
             PlayerName = playerName,
-            Password = password
+            Password = password,
+            ModVersion = Plugin.PluginVersion
         };
 
         _transport.SendToHost(ProtocolCodec.WrapJoinRequest(joinRequest));
@@ -375,6 +376,20 @@ internal sealed class MultiplayerSession : IDisposable
 
         var request = ProtocolCodec.DecodeJoinRequest(payload);
         _log.LogInfo($"Received join request from '{request.PlayerName}'.");
+
+        // check version
+        if (!string.Equals(request.ModVersion, Plugin.PluginVersion, StringComparison.Ordinal))
+        {
+            var clientVer = string.IsNullOrEmpty(request.ModVersion) ? "unknown" : request.ModVersion;
+            _log.LogInfo($"Rejected '{request.PlayerName}': version mismatch (client={clientVer}, host={Plugin.PluginVersion}).");
+            var rejection = new JoinResponse
+            {
+                Accepted = false,
+                Reason = $"Version mismatch: you have {clientVer}, host has {Plugin.PluginVersion}."
+            };
+            _transport.SendToClient(senderPeerId, ProtocolCodec.WrapJoinRejected(rejection));
+            return;
+        }
 
         // check password
         if (_serverConfig != null && _serverConfig.HasPassword)

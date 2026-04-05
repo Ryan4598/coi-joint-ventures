@@ -10,4 +10,7 @@ internal sealed class JoinRequest
 
     [DataMember(Order = 2)]
     public string Password { get; set; } = string.Empty;
+
+    [DataMember(Order = 3)]
+    public string ModVersion { get; set; } = string.Empty;
 }
