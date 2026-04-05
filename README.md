@@ -21,6 +21,8 @@ One player hosts their current save, and friends connect via Steam (or LAN). The
 ### What hasn't really been tested
 
 - **LAN support** - direct connect via IP/port is implemented but barely tested. Steam is the primary path.
+- **High latency clients** - no idea how the game behaves when commands take a while to arrive. Expect weirdness.
+- **Clients that drop packets and reconnect** - if you lose connection and rejoin, you're likely way out of sync. Probably need a full rejoin.
 
 ### What doesn't work (yet)
 
