@@ -357,6 +357,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnWaypointReceived(Networking.Protocol.WaypointPayload wp)
     {
         _waypoints?.Spawn(wp);
+        PluginRuntime.Chat.AddAction(wp.SenderName, "placed a waypoint");
     }
 
     private void RunAction(Action action, string description)
