@@ -368,6 +368,9 @@ internal sealed class LocalTcpTransport : INetworkTransport
         }
     }
 
+    private const int MaxPeerIdBytes = 256;
+    private const int MaxPayloadBytes = 10 * 1024 * 1024; // 10 MB
+
     private static async Task<TransportMessage?> ReadMessageAsync(Stream stream, CancellationToken cancellationToken)
     {
         var senderLengthBuffer = await ReadExactlyAsync(stream, 4, cancellationToken);
@@ -377,6 +380,11 @@ internal sealed class LocalTcpTransport : INetworkTransport
         }
 
         var senderLength = BitConverter.ToInt32(senderLengthBuffer, 0);
+        if (senderLength <= 0 || senderLength > MaxPeerIdBytes)
+        {
+            return null;
+        }
+
         var senderBuffer = await ReadExactlyAsync(stream, senderLength, cancellationToken);
         if (senderBuffer == null)
         {
@@ -390,6 +398,11 @@ internal sealed class LocalTcpTransport : INetworkTransport
         }
 
         var payloadLength = BitConverter.ToInt32(payloadLengthBuffer, 0);
+        if (payloadLength < 0 || payloadLength > MaxPayloadBytes)
+        {
+            return null;
+        }
+
         var payloadBuffer = await ReadExactlyAsync(stream, payloadLength, cancellationToken);
         if (payloadBuffer == null)
         {

@@ -23,6 +23,7 @@ internal sealed class MultiplayerSession : IDisposable
     private readonly HashSet<string> _pendingPeers = new();
     private readonly Dictionary<string, string> _peerNames = new();
     private readonly HashSet<Guid> _outboundCommandIds = new();
+    private readonly HashSet<Guid> _seenCommandIds = new();
     private long _nextSequence;
 
     private ServerConfig? _serverConfig;
@@ -604,12 +605,21 @@ internal sealed class MultiplayerSession : IDisposable
         _log.LogInfo($"Manual load required: {writtenPath}");
     }
 
+    // 512 MB — no legit COI save comes close to this
+    private const int MaxSaveSize = 512 * 1024 * 1024;
+
     private void HandleSaveChunk(byte[] payload)
     {
         ProtocolCodec.DecodeSaveChunk(payload, out var chunkIndex, out var totalChunks, out var totalSize, out var chunkData);
 
         if (chunkIndex == 0)
         {
+            if (totalSize <= 0 || totalSize > MaxSaveSize || totalChunks <= 0)
+            {
+                _log.LogWarning($"Rejecting save: totalSize={totalSize}, totalChunks={totalChunks} — out of range.");
+                return;
+            }
+
             _saveChunkBuffer = new byte[totalSize];
             _saveChunksReceived = 0;
             _saveChunksExpected = totalChunks;
@@ -624,8 +634,20 @@ internal sealed class MultiplayerSession : IDisposable
             return;
         }
 
-        var offset = chunkIndex * ProtocolCodec.MaxChunkSize;
-        Buffer.BlockCopy(chunkData, 0, _saveChunkBuffer, offset, chunkData.Length);
+        if (chunkIndex < 0 || chunkIndex >= _saveChunksExpected)
+        {
+            _log.LogWarning($"Rejecting chunk with out-of-range index {chunkIndex} (expected 0..{_saveChunksExpected - 1}).");
+            return;
+        }
+
+        long offset = (long)chunkIndex * ProtocolCodec.MaxChunkSize;
+        if (offset + chunkData.Length > _saveChunkBuffer.Length)
+        {
+            _log.LogWarning($"Rejecting chunk {chunkIndex}: write at {offset}+{chunkData.Length} exceeds buffer size {_saveChunkBuffer.Length}.");
+            return;
+        }
+
+        Buffer.BlockCopy(chunkData, 0, _saveChunkBuffer, (int)offset, chunkData.Length);
         _saveChunksReceived++;
         StatusMessage = $"Receiving save... ({_saveChunksReceived}/{_saveChunksExpected})";
         _log.LogDebug($"Received save chunk {chunkIndex + 1}/{totalChunks} ({chunkData.Length} bytes).");
@@ -669,9 +691,11 @@ internal sealed class MultiplayerSession : IDisposable
     {
         var msg = ProtocolCodec.DecodeChatMessage(payload);
 
-        // host relays chat to everyone
+        // host stamps the real sender identity before relaying — don't trust the payload
         if (Mode == MultiplayerMode.Host && senderPeerId != HostPeerId)
         {
+            msg.SenderPeerId = senderPeerId;
+            msg.SenderName = ResolvePeerName(senderPeerId);
             _transport.Broadcast(ProtocolCodec.WrapChatMessage(msg));
         }
 
@@ -783,8 +807,20 @@ internal sealed class MultiplayerSession : IDisposable
 
         _log.LogInfo($"[GAME-CMD] Decoded: type='{envelope.CommandType}', issuer='{envelope.IssuerPlayerId}', seq={envelope.Sequence}");
 
+        if (!_seenCommandIds.Add(envelope.CommandId))
+        {
+            _log.LogWarning($"[GAME-CMD] Duplicate CommandId {envelope.CommandId} from '{senderPeerId}' — dropped.");
+            return;
+        }
+
         if (Mode == MultiplayerMode.Host && senderPeerId != HostPeerId)
         {
+            if (!string.Equals(envelope.IssuerPlayerId, senderPeerId, StringComparison.Ordinal))
+            {
+                _log.LogWarning($"[GAME-CMD] Rejected command from '{senderPeerId}': IssuerPlayerId '{envelope.IssuerPlayerId}' doesn't match sender.");
+                return;
+            }
+
             _log.LogInfo($"[GAME-CMD] HOST: Processing client command '{envelope.CommandType}' from '{senderPeerId}' -> reinject + broadcast.");
             ReceiveReplicatedCommand(envelope);
             _transport.Broadcast(ProtocolCodec.WrapGameCommand(payload));
