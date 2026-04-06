@@ -4,5 +4,6 @@ internal enum ChatEntryKind
 {
     Chat,
     Action,
+    SimControl,
     System
 }

@@ -62,7 +62,10 @@ internal static class CommandInterceptionPatch
             var actionText = ActionDescriptionBuilder.Describe(commandInfo, command);
             if (actionText != null)
             {
-                session.SendActionLog(actionText);
+                if (ActionDescriptionBuilder.IsSimControl(commandInfo))
+                    session.SendSimControlLog(actionText);
+                else
+                    session.SendActionLog(actionText);
             }
         }
         catch (Exception ex)

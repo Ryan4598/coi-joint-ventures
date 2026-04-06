@@ -10,6 +10,12 @@ internal static class ActionDescriptionBuilder
 {
     private static readonly BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
+    public static bool IsSimControl(NativeCommandInfo info)
+    {
+        var type = info.CommandType;
+        return type.Contains("SetSimPauseStateCmd") || type.Contains("GameSpeedChangeCmd");
+    }
+
     public static string? Describe(NativeCommandInfo info, object? commandObj = null)
     {
         var type = info.CommandType;

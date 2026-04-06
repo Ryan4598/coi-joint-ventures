@@ -24,6 +24,7 @@ internal readonly struct ChatEntry
         {
             ChatEntryKind.Chat => $"[{time}] {SenderName}: {Text}",
             ChatEntryKind.Action => $"[{time}] * {SenderName} {Text}",
+            ChatEntryKind.SimControl => $"[{time}] * {SenderName} {Text}",
             ChatEntryKind.System => $"[{time}] {Text}",
             _ => $"[{time}] {Text}"
         };

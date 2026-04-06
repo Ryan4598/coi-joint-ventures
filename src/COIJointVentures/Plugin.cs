@@ -36,7 +36,7 @@ public sealed class Plugin : BaseUnityPlugin
     private JoinOverlayUI? _joinOverlay;
 
     private bool _showMainPanel;
-    private bool _showChatPanel;
+
     private bool _wasInGame;
     private WaypointManager? _waypoints;
     private MultiplayerSession? _hookedSession;
@@ -148,23 +148,27 @@ public sealed class Plugin : BaseUnityPlugin
         HandleWaypointInput();
         _waypoints?.Update();
 
-        if (Input.GetKeyDown(KeyCode.F9))
+        // auto-show/hide chat HUD based on session state
+        if (_chatPanel != null)
         {
             var inSession = _bootstrap != null &&
                 (_bootstrap.Session.Mode == MultiplayerMode.Host || _bootstrap.Session.Mode == MultiplayerMode.Client);
-            if (inSession)
-            {
-                _showChatPanel = !_showChatPanel;
-                if (_chatPanel != null) _chatPanel.Visible = _showChatPanel;
-            }
+            _chatPanel.Visible = inSession;
         }
 
-        // hide chat if session ends
-        if (_chatPanel != null && _chatPanel.Visible && _bootstrap != null &&
-            _bootstrap.Session.Mode == MultiplayerMode.None)
+        // Enter/F9 opens chat input, Escape closes it
+        if (_chatPanel != null && _chatPanel.Visible)
         {
-            _showChatPanel = false;
-            _chatPanel.Visible = false;
+            if ((Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.F9))
+                && !_chatPanel.InputOpen)
+            {
+                _chatPanel.OpenInput();
+            }
+            else if (Input.GetKeyDown(KeyCode.Escape) && _chatPanel.InputOpen)
+            {
+                _chatPanel.CloseInput();
+                Input.ResetInputAxes();
+            }
         }
 
         if (Input.GetKeyDown(KeyCode.F8))

@@ -732,6 +732,10 @@ internal sealed class MultiplayerSession : IDisposable
         {
             PluginRuntime.Chat.AddChat(msg.SenderName, msg.Text);
         }
+        else if (msg.Kind == 2)
+        {
+            PluginRuntime.Chat.AddSimControl(msg.SenderName, msg.Text);
+        }
         else
         {
             PluginRuntime.Chat.AddAction(msg.SenderName, msg.Text);
@@ -849,6 +853,29 @@ internal sealed class MultiplayerSession : IDisposable
         }
 
         PluginRuntime.Chat.AddAction(LocalPlayerName, description);
+    }
+
+    public void SendSimControlLog(string description)
+    {
+        var msg = new ChatMessagePayload
+        {
+            SenderName = LocalPlayerName,
+            SenderPeerId = LocalPeerId,
+            Kind = 2,
+            Text = description
+        };
+
+        var wrapped = ProtocolCodec.WrapChatMessage(msg);
+        if (Mode == MultiplayerMode.Host)
+        {
+            _transport.Broadcast(wrapped);
+        }
+        else
+        {
+            _transport.SendToHost(wrapped);
+        }
+
+        PluginRuntime.Chat.AddSimControl(LocalPlayerName, description);
     }
 
     private string ResolvePeerName(string peerId)

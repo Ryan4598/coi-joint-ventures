@@ -32,6 +32,11 @@ internal sealed class ChatLog
         Add(new ChatEntry(senderName, description, ChatEntryKind.Action));
     }
 
+    public void AddSimControl(string senderName, string description)
+    {
+        Add(new ChatEntry(senderName, description, ChatEntryKind.SimControl));
+    }
+
     public void AddSystem(string text)
     {
         Add(new ChatEntry(string.Empty, text, ChatEntryKind.System));
