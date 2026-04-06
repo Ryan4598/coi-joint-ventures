@@ -35,7 +35,7 @@ public sealed class Plugin : BaseUnityPlugin
     private ChatPanelUI? _chatPanel;
     private JoinOverlayUI? _joinOverlay;
 
-    private bool _showMainPanel;
+
 
     private bool _wasInGame;
     private WaypointManager? _waypoints;
@@ -180,10 +180,9 @@ public sealed class Plugin : BaseUnityPlugin
             }
         }
 
-        if (Input.GetKeyDown(KeyCode.F8))
+        if (Input.GetKeyDown(KeyCode.F8) && _mainPanel != null)
         {
-            _showMainPanel = !_showMainPanel;
-            if (_mainPanel != null) _mainPanel.Visible = _showMainPanel;
+            _mainPanel.Visible = !_mainPanel.Visible;
         }
 
         _bootstrap?.PollTransport();
@@ -249,7 +248,7 @@ public sealed class Plugin : BaseUnityPlugin
 
         if (_bootstrap == null) return;
 
-        if (!_showMainPanel && !MainCapture.IsInGame && _bootstrap.Session.Mode == MultiplayerMode.None)
+        if (_mainPanel != null && !_mainPanel.Visible && !MainCapture.IsInGame && _bootstrap.Session.Mode == MultiplayerMode.None)
         {
             var style = new GUIStyle(GUI.skin.label)
             {

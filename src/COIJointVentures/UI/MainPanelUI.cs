@@ -67,8 +67,9 @@ internal sealed class MainPanelUI
     {
         _root = new VisualElement();
         _root.style.position = Position.Absolute;
-        _root.style.left = 20;
-        _root.style.top = 20;
+        _root.style.left = new Length(50, LengthUnit.Percent);
+        _root.style.top = 180;
+        _root.style.translate = new Translate(new Length(-50, LengthUnit.Percent), 0);
         _root.style.width = 380;
         _root.style.backgroundColor = new Color(0.12f, 0.12f, 0.14f, 1f);
         UIHelpers.SetBorderRadius(_root, 8);

@@ -56,8 +56,9 @@ internal sealed class ServerBrowserUI
     {
         _root = new VisualElement();
         _root.style.position = Position.Absolute;
-        _root.style.left = 150;
-        _root.style.top = 100;
+        _root.style.left = new Length(50, LengthUnit.Percent);
+        _root.style.top = 380;
+        _root.style.translate = new Translate(new Length(-50, LengthUnit.Percent), 0);
         _root.style.width = 700;
         _root.style.height = 500;
         _root.style.backgroundColor = new Color(0.12f, 0.12f, 0.14f, 1f);
