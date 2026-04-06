@@ -31,6 +31,10 @@ One player hosts their current save, and friends connect via Steam (or LAN). The
 - Camera and UI-only state aren't synced (each player has their own view)
 - This is very much alpha - expect rough edges
 
+### Known bugs
+
+- **No mod or DLC checking** - clients can join with different mods or DLCs than the host, which will cause errors, crashes, or everyone getting stuck on the loading screen
+
 ## Installation
 
 ### Option 1: Launcher (recommended)
