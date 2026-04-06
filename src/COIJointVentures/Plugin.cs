@@ -110,11 +110,20 @@ public sealed class Plugin : BaseUnityPlugin
             RunAction(() => _bootstrap!.HostGame(config), "host LAN game");
         _mainPanel.OnStopHosting += () =>
         {
-            RunAction(() => _bootstrap!.Disconnect(), "stop hosting");
+            RunAction(() =>
+            {
+                _waypoints?.Clear();
+                _bootstrap!.Disconnect();
+            }, "stop hosting");
         };
         _mainPanel.OnDisconnect += () =>
         {
-            RunAction(() => _bootstrap!.Disconnect(), "disconnect");
+            RunAction(() =>
+            {
+                _waypoints?.Clear();
+                _bootstrap!.Disconnect();
+                MainCapture.TryGoToMainMenu();
+            }, "disconnect");
         };
         _mainPanel.OnCancelConnect += () =>
         {
