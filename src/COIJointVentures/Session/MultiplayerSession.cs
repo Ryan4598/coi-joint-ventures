@@ -101,6 +101,24 @@ internal sealed class MultiplayerSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Full player list with display names and color indices.
+    /// On the host this is built from local state. On clients it's
+    /// received from the host via PlayerList messages.
+    /// </summary>
+    public List<PlayerInfo> PlayerList
+    {
+        get
+        {
+            lock (_playerList)
+            {
+                return new List<PlayerInfo>(_playerList);
+            }
+        }
+    }
+
+    private readonly List<PlayerInfo> _playerList = new();
+
     public byte[]? ReceivedSaveData => _receivedSaveData;
     public string? ReceivedSavePath => _receivedSavePath;
 
@@ -141,6 +159,7 @@ internal sealed class MultiplayerSession : IDisposable
         StatusMessage = $"Hosting '{config.ServerName}'" +
                         (config.HasPassword ? " (password protected)" : "");
         _log.LogInfo(StatusMessage);
+        BroadcastPlayerList();
     }
 
     public void StartAsClient(string localPeerId, string hostPeerId, string playerName, string password)
@@ -362,6 +381,9 @@ internal sealed class MultiplayerSession : IDisposable
                 break;
             case ProtocolMessageType.GameCommand:
                 HandleGameCommand(message.SenderPeerId, payload);
+                break;
+            case ProtocolMessageType.PlayerList:
+                HandlePlayerList(payload);
                 break;
             case ProtocolMessageType.Waypoint:
                 HandleWaypoint(message.SenderPeerId, payload);
@@ -716,6 +738,7 @@ internal sealed class MultiplayerSession : IDisposable
 
         PluginRuntime.Chat.AddSystem($"{ResolvePeerName(senderPeerId)} joined the game.");
         _joinCoordinator?.OnClientReady(senderPeerId);
+        BroadcastPlayerList();
     }
 
     private void HandleChatMessage(string senderPeerId, byte[] payload)
@@ -750,6 +773,16 @@ internal sealed class MultiplayerSession : IDisposable
         }
     }
 
+    private void HandlePlayerList(byte[] payload)
+    {
+        var list = ProtocolCodec.DecodePlayerList(payload);
+        lock (_playerList)
+        {
+            _playerList.Clear();
+            _playerList.AddRange(list);
+        }
+    }
+
     // waypoint ping system
     public event Action<WaypointPayload>? WaypointReceived;
 
@@ -764,6 +797,63 @@ internal sealed class MultiplayerSession : IDisposable
             }
             return idx;
         }
+    }
+
+    /// <summary>
+    /// Host builds the player list from local state and pushes it to all clients.
+    /// Also updates our own _playerList so the host UI stays current.
+    /// </summary>
+    public void BroadcastPlayerList()
+    {
+        if (Mode != MultiplayerMode.Host) return;
+
+        var list = new List<PlayerInfo>();
+
+        // host is always first
+        list.Add(new PlayerInfo
+        {
+            Name = LocalPlayerName,
+            ColorIndex = GetOrAssignColor(LocalPeerId),
+            IsPending = false
+        });
+
+        lock (_activePeers)
+        {
+            foreach (var peer in _activePeers)
+            {
+                list.Add(new PlayerInfo
+                {
+                    Name = ResolvePeerName(peer),
+                    ColorIndex = GetOrAssignColor(peer),
+                    IsPending = false
+                });
+            }
+        }
+
+        lock (_pendingPeers)
+        {
+            foreach (var peer in _pendingPeers)
+            {
+                list.Add(new PlayerInfo
+                {
+                    Name = ResolvePeerName(peer),
+                    ColorIndex = GetOrAssignColor(peer),
+                    IsPending = true
+                });
+            }
+        }
+
+        lock (_playerList)
+        {
+            _playerList.Clear();
+            _playerList.AddRange(list);
+        }
+
+        _transport.Broadcast(ProtocolCodec.WrapPlayerList(list));
+
+        // update lobby metadata so the server browser shows the right count
+        if (_transport is SteamTransport steam)
+            steam.SetLobbyData("players", list.Count.ToString());
     }
 
     public void SendWaypoint(float x, float y, float z)
@@ -991,6 +1081,9 @@ internal sealed class MultiplayerSession : IDisposable
         }
 
         _joinCoordinator?.OnClientDisconnected(peerId);
+
+        if (Mode == MultiplayerMode.Host)
+            BroadcastPlayerList();
     }
 
     public void TickJoinCoordinator()

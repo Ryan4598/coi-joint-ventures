@@ -168,7 +168,11 @@ public sealed class Plugin : BaseUnityPlugin
         // Enter/F9 opens chat input, Escape closes it
         if (_chatPanel != null && _chatPanel.Visible)
         {
-            if ((Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.F9))
+            if (Input.GetKeyDown(KeyCode.F9))
+            {
+                _chatPanel.ToggleInput();
+            }
+            else if ((Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
                 && !_chatPanel.InputOpen)
             {
                 _chatPanel.OpenInput();

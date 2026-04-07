@@ -457,7 +457,10 @@ internal sealed class ServerBrowserUI
         var serverName = lobby.GetData("name") ?? "Unknown Server";
         var hostName = lobby.GetData("host_name") ?? lobby.Owner.Name ?? "???";
         var hasPass = lobby.GetData("password") == "1";
-        var members = lobby.MemberCount;
+        // use our lobby data for player count since MemberCount only tracks
+        // users who joined the lobby, not peers connected via relay socket
+        var playersStr = lobby.GetData("players");
+        var members = int.TryParse(playersStr, out var p) ? p : lobby.MemberCount;
         var max = lobby.MaxMembers;
 
         var row = new VisualElement();

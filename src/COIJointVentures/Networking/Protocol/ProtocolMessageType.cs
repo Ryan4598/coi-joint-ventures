@@ -13,5 +13,6 @@ internal enum ProtocolMessageType : byte
     JoinSyncBegin = 0x08,
     JoinSyncEnd = 0x09,
     ChatMessage = 0x20,
+    PlayerList = 0x25,
     Waypoint = 0x30
 }

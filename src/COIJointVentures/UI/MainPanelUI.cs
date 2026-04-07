@@ -38,7 +38,8 @@ internal sealed class MainPanelUI
     private VisualElement _steamInfoContainer = null!;
     private VisualElement _lanInfoContainer = null!;
     private Label _lanInfoLabel = null!;
-    private Label _playerListLabel = null!;
+    private VisualElement _hostPlayerListContainer = null!;
+    private VisualElement _clientPlayerListContainer = null!;
     private bool _hostingIsSteam;
 
     // connecting/connected
@@ -486,12 +487,9 @@ internal sealed class MainPanelUI
         _lanInfoContainer.Add(_lanInfoLabel);
         panel.Add(_lanInfoContainer);
 
-        _playerListLabel = new Label("");
-        _playerListLabel.style.fontSize = 12;
-        _playerListLabel.style.color = new Color(0.8f, 0.8f, 0.8f);
-        _playerListLabel.style.whiteSpace = WhiteSpace.Normal;
-        _playerListLabel.style.marginBottom = 8;
-        panel.Add(_playerListLabel);
+        _hostPlayerListContainer = new VisualElement();
+        _hostPlayerListContainer.style.marginBottom = 8;
+        panel.Add(_hostPlayerListContainer);
 
         var stopBtn = UIHelpers.MakeButton("Stop Hosting", () => OnStopHosting?.Invoke(), new Color(0.5f, 0.2f, 0.2f));
         stopBtn.style.height = 30;
@@ -544,6 +542,10 @@ internal sealed class MainPanelUI
         _connectedAsLabel.style.marginBottom = 8;
         panel.Add(_connectedAsLabel);
 
+        _clientPlayerListContainer = new VisualElement();
+        _clientPlayerListContainer.style.marginBottom = 8;
+        panel.Add(_clientPlayerListContainer);
+
         var disconnectBtn = UIHelpers.MakeButton("Disconnect", () => OnDisconnect?.Invoke(), new Color(0.5f, 0.2f, 0.2f));
         disconnectBtn.style.height = 30;
         panel.Add(disconnectBtn);
@@ -588,24 +590,42 @@ internal sealed class MainPanelUI
             }
         }
 
-        // player list
-        var peers = session.ActivePeers;
-        var pending = session.PendingPeers;
-        var lines = $"Connected players: {peers.Count}";
-        foreach (var peer in peers)
-            lines += $"\n  - {GetSteamName(peer)}";
-        if (pending.Count > 0)
-        {
-            lines += $"\nJoining: {pending.Count}";
-            foreach (var peer in pending)
-                lines += $"\n  - {GetSteamName(peer)} (syncing...)";
-        }
-        _playerListLabel.text = lines;
+        // player list with colored names
+        UpdatePlayerList(session);
     }
 
     private void UpdateConnectedPanel(MultiplayerSession session)
     {
         _connectedAsLabel.text = $"Playing as: {GetSteamName(session.LocalPeerId)}";
+        UpdatePlayerList(session);
+    }
+
+    private void UpdatePlayerList(MultiplayerSession session)
+    {
+        var container = session.Mode == MultiplayerMode.Host
+            ? _hostPlayerListContainer
+            : _clientPlayerListContainer;
+
+        container.Clear();
+
+        var players = session.PlayerList;
+        if (players.Count == 0) return;
+
+        var header = new Label($"Players ({players.Count})");
+        header.style.fontSize = 12;
+        header.style.color = new Color(0.8f, 0.8f, 0.8f);
+        header.style.marginBottom = 2;
+        container.Add(header);
+
+        foreach (var player in players)
+        {
+            var color = GetPeerColor(player.ColorIndex);
+            var suffix = player.IsPending ? " (joining...)" : "";
+            var lbl = new Label($"  \u25CF {player.Name}{suffix}");
+            lbl.style.fontSize = 12;
+            lbl.style.color = color;
+            container.Add(lbl);
+        }
     }
 
     private static string GetSteamName(string peerId)
@@ -616,10 +636,26 @@ internal sealed class MainPanelUI
             {
                 var friend = new Friend(new SteamId { Value = steamIdValue });
                 if (!string.IsNullOrEmpty(friend.Name))
-                    return $"{friend.Name} ({peerId})";
+                    return friend.Name;
             }
         }
         catch { }
         return peerId;
+    }
+
+    // same palette as waypoints so the dot matches the ping color
+    private static readonly Color[] PeerColors =
+    {
+        new Color(0.2f, 0.6f, 1.0f),  // blue
+        new Color(1.0f, 0.35f, 0.3f), // red
+        new Color(0.3f, 0.9f, 0.4f),  // green
+        new Color(1.0f, 0.75f, 0.2f), // yellow
+        new Color(0.8f, 0.4f, 1.0f),  // purple
+        new Color(1.0f, 0.55f, 0.1f), // orange
+    };
+
+    private static Color GetPeerColor(int colorIndex)
+    {
+        return PeerColors[Mathf.Abs(colorIndex) % PeerColors.Length];
     }
 }

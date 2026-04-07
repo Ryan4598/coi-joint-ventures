@@ -84,7 +84,11 @@ internal sealed class ChatPanelUI
             if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
             {
                 evt.StopImmediatePropagation();
-                _inputField.schedule.Execute(SendMessage);
+                var text = _inputField.value?.Trim();
+                if (string.IsNullOrEmpty(text))
+                    _inputField.schedule.Execute(CloseInput);
+                else
+                    _inputField.schedule.Execute(SendMessage);
             }
             else if (evt.keyCode == KeyCode.Escape)
             {
@@ -120,7 +124,8 @@ internal sealed class ChatPanelUI
         // constrain scroll area so it's scrollable
         _scrollView.style.maxHeight = 280;
 
-        _inputField.Focus();
+        // schedule focus for next frame so UIElements has time to lay out
+        _inputField.schedule.Execute(() => _inputField.Focus());
         _lastMessageTime = Time.unscaledTime;
         // force a rebuild to show all messages, then scroll to bottom
         _lastVersion = -1;
@@ -171,7 +176,7 @@ internal sealed class ChatPanelUI
                 };
 
                 var lbl = new Label(entry.FormatForDisplay());
-                lbl.style.fontSize = 12;
+                lbl.style.fontSize = 14;
                 lbl.style.color = color;
                 lbl.style.whiteSpace = WhiteSpace.Normal;
                 lbl.style.marginBottom = 1;

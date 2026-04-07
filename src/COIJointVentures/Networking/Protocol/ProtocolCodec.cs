@@ -86,6 +86,37 @@ internal static class ProtocolCodec
         return DeserializeJson<ChatMessagePayload>(payload);
     }
 
+    public static byte[] WrapPlayerList(System.Collections.Generic.List<Session.PlayerInfo> players)
+    {
+        // simple text format: name\tcolorIndex\tisPending per line
+        var sb = new System.Text.StringBuilder();
+        foreach (var p in players)
+        {
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append(p.Name).Append('\t').Append(p.ColorIndex).Append('\t').Append(p.IsPending ? '1' : '0');
+        }
+        return Wrap(ProtocolMessageType.PlayerList, System.Text.Encoding.UTF8.GetBytes(sb.ToString()));
+    }
+
+    public static System.Collections.Generic.List<Session.PlayerInfo> DecodePlayerList(byte[] payload)
+    {
+        var list = new System.Collections.Generic.List<Session.PlayerInfo>();
+        var text = System.Text.Encoding.UTF8.GetString(payload);
+        if (string.IsNullOrEmpty(text)) return list;
+        foreach (var line in text.Split('\n'))
+        {
+            var parts = line.Split('\t');
+            if (parts.Length < 3) continue;
+            list.Add(new Session.PlayerInfo
+            {
+                Name = parts[0],
+                ColorIndex = int.TryParse(parts[1], out var c) ? c : 0,
+                IsPending = parts[2] == "1"
+            });
+        }
+        return list;
+    }
+
     public static byte[] WrapWaypoint(WaypointPayload waypoint)
     {
         return Wrap(ProtocolMessageType.Waypoint, SerializeJson(waypoint));
