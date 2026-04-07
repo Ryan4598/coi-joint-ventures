@@ -26,8 +26,8 @@ internal static class ProtocolCodec
         return Wrap(ProtocolMessageType.JoinRejected, SerializeJson(response));
     }
 
-    // steam shits itself if you send more than 64KB at once(in my experience...) - I also don't really have a fuck what I'm doing with this and haven't looked into it
-    public const int MaxChunkSize = 64 * 1024;
+    // steam supports up to 512KB per message natively, 256KB gives us headroom
+    public const int MaxChunkSize = 256 * 1024;
 
     public static byte[] WrapSaveData(byte[] saveBytes)
     {

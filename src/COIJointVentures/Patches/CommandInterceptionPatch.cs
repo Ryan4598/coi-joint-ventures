@@ -116,7 +116,7 @@ internal static class CommandInterceptionPatch
             return;
         }
 
-        // drain replicated buffer and set cooldowns before we observe anything
+        // drain replicated buffer and mark each instance so we don't re-observe it
         var replicated = PluginRuntime.DrainReplicated();
         if (replicated.Count > 0)
         {
@@ -124,8 +124,8 @@ internal static class CommandInterceptionPatch
             foreach (var cmd in replicated)
             {
                 var cmdType = cmd.GetType().FullName ?? cmd.GetType().Name;
-                ReplicatedCommandTracker.MarkInjectedType(cmdType);
-                log.LogInfo($"[PREFIX]   - {cmdType} (cooldown set, IsProcessed={GetIsProcessed(cmd)})");
+                ReplicatedCommandTracker.MarkInjected(cmd);
+                log.LogInfo($"[PREFIX]   - {cmdType} (marked, IsProcessed={GetIsProcessed(cmd)})");
             }
         }
 
@@ -138,8 +138,7 @@ internal static class CommandInterceptionPatch
             foreach (var cmd in procCmds)
             {
                 var t = cmd.GetType().FullName ?? cmd.GetType().Name;
-                var recentlyInjected = ReplicatedCommandTracker.WasRecentlyInjected(t);
-                log.LogInfo($"[PREFIX]   m_commandsToProcess: {t} (recentlyInjected={recentlyInjected}, IsProcessed={GetIsProcessed(cmd)})");
+                log.LogInfo($"[PREFIX]   m_commandsToProcess: {t} (IsProcessed={GetIsProcessed(cmd)})");
             }
         }
 
@@ -186,10 +185,10 @@ internal static class CommandInterceptionPatch
                 continue;
             }
 
-            // host injected this, let it through without re-sending
-            if (ReplicatedCommandTracker.WasRecentlyInjected(key))
+            // this exact instance was injected from the network, let it through
+            if (ReplicatedCommandTracker.ConsumeIfInjected(command))
             {
-                log.LogInfo($"[FIELD:{fieldName}] PASSTHROUGH '{key}' (host-injected — execute, no observe)");
+                log.LogInfo($"[FIELD:{fieldName}] PASSTHROUGH '{key}' (network-injected, not re-observing)");
                 if (remaining != null)
                 {
                     remaining.Add(command);

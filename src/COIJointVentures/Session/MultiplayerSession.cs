@@ -481,28 +481,48 @@ internal sealed class MultiplayerSession : IDisposable
         _log.LogInfo($"Save transfer complete to '{peerId}'.");
     }
 
-    // paced sender so we don't slam steam's rate limits
-    private readonly Queue<Action> _pendingSends = new();
-    private int _sendPaceCounter;
+    // burst sender - fires as many chunks as steam will accept per tick,
+    // backs off on LimitExceeded and picks up next tick
+    private readonly Queue<(string peerId, byte[] payload)> _pendingSends = new();
 
     public bool HasPendingSends => _pendingSends.Count > 0;
 
     public void TickPendingSends()
     {
         if (_pendingSends.Count == 0)
+            return;
+
+        var steam = _transport as SteamTransport;
+        if (steam == null)
         {
+            // non-steam transport, just send everything
+            while (_pendingSends.Count > 0)
+            {
+                var (peerId, payload) = _pendingSends.Dequeue();
+                _transport.SendToClient(peerId, payload);
+            }
             return;
         }
 
-        // 1 message per 10 ticks, roughly 166ms at 60fps
-        _sendPaceCounter++;
-        if (_sendPaceCounter < 10)
+        // send as many as the buffer will take, stop on LimitExceeded
+        while (_pendingSends.Count > 0)
         {
-            return;
-        }
+            var (peerId, payload) = _pendingSends.Peek();
+            var conn = steam.GetConnectionForPeer(peerId);
+            if (conn == null)
+            {
+                _pendingSends.Dequeue();
+                continue;
+            }
 
-        _sendPaceCounter = 0;
-        _pendingSends.Dequeue()();
+            if (!steam.TrySend(conn.Value, payload, $"chunk to {peerId}"))
+            {
+                // buffer full, try again next tick
+                break;
+            }
+
+            _pendingSends.Dequeue();
+        }
     }
 
     private void SendSaveToClients(IEnumerable<string> peerIds, byte[] saveBytes)
@@ -521,22 +541,10 @@ internal sealed class MultiplayerSession : IDisposable
                 var length = Math.Min(chunkSize, saveBytes.Length - offset);
                 var chunk = new byte[length];
                 Buffer.BlockCopy(saveBytes, offset, chunk, 0, length);
-                var chunkMsg = ProtocolCodec.WrapSaveChunk(i, totalChunks, saveBytes.Length, chunk);
-                var targetPeer = peerId;
-                var chunkIndex = i;
-                _pendingSends.Enqueue(() =>
-                {
-                    _log.LogInfo($"[CHUNK-SEND] Sending chunk {chunkIndex + 1}/{totalChunks} to '{targetPeer}'");
-                    _transport.SendToClient(targetPeer, chunkMsg);
-                });
+                _pendingSends.Enqueue((peerId, ProtocolCodec.WrapSaveChunk(i, totalChunks, saveBytes.Length, chunk)));
             }
 
-            var completePeer = peerId;
-            _pendingSends.Enqueue(() =>
-            {
-                _log.LogInfo($"[CHUNK-SEND] Sending SaveComplete to '{completePeer}'");
-                _transport.SendToClient(completePeer, ProtocolCodec.WrapSaveComplete());
-            });
+            _pendingSends.Enqueue((peerId, ProtocolCodec.WrapSaveComplete()));
         }
 
         _log.LogInfo($"Queued {_pendingSends.Count} send operations for {peerList.Count} client(s).");

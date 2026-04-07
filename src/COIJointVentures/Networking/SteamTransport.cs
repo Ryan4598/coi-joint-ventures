@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using BepInEx.Logging;
 using Steamworks;
@@ -11,6 +12,10 @@ internal sealed class SteamTransport : INetworkTransport, ISocketManager, IConne
 {
     private const int VirtualPort = 0;
     private const int ReceiveBufferSize = 64;
+
+    // bump defaults so save transfers don't bottleneck
+    private const int SendBufferBytes = 2 * 1024 * 1024;      // 2 MB (default 512 KB)
+    private const int SendRateMaxBytes = 10 * 1024 * 1024;     // 10 MB/s (default 256 KB/s)
 
     private readonly ManualLogSource _log;
     private readonly object _gate = new object();
@@ -161,15 +166,30 @@ internal sealed class SteamTransport : INetworkTransport, ISocketManager, IConne
         SendWithRetry(_connectionManager.Connection, payload, "send-to-host");
     }
 
+    /// <summary>
+    /// Returns false if the send buffer is full (LimitExceeded) so callers
+    /// can back off and retry next tick instead of blocking the game thread.
+    /// </summary>
+    public bool TrySend(Connection connection, byte[] payload, string operation)
+    {
+        var result = connection.SendMessage(payload, SendType.Reliable | SendType.NoNagle, 0);
+        if (result == Result.OK)
+            return true;
+
+        if (result == Result.LimitExceeded)
+            return false;
+
+        _log.LogWarning($"Steam {operation} failed: {result}");
+        return false;
+    }
+
     private void SendWithRetry(Connection connection, byte[] payload, string operation)
     {
         for (int attempt = 0; attempt < 15; attempt++)
         {
-            var result = connection.SendMessage(payload, SendType.Reliable, 0);
+            var result = connection.SendMessage(payload, SendType.Reliable | SendType.NoNagle, 0);
             if (result == Result.OK)
-            {
                 return;
-            }
 
             if (result == Result.LimitExceeded && attempt < 14)
             {
@@ -180,6 +200,56 @@ internal sealed class SteamTransport : INetworkTransport, ISocketManager, IConne
             _log.LogWarning($"Steam {operation} failed: {result} (attempt {attempt + 1})");
             return;
         }
+    }
+
+    private void ConfigureConnection(Connection connection)
+    {
+        // Facepunch marks NetConfig as internal so we use reflection
+        try
+        {
+            var connType = typeof(Connection);
+            var setMethod = connType.GetMethod("SetConfigInt",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            if (setMethod == null)
+            {
+                _log.LogWarning("Connection.SetConfigInt not found - can't tune send params");
+                return;
+            }
+
+            // NetConfig enum values: SendBufferSize=9, SendRateMin=10, SendRateMax=11
+            var netConfigType = connType.Assembly.GetType("Steamworks.Data.NetConfig");
+            if (netConfigType == null)
+            {
+                _log.LogWarning("NetConfig type not found - can't tune send params");
+                return;
+            }
+
+            var boxedConn = (object)connection;
+            setMethod.Invoke(boxedConn, new object[] { Enum.ToObject(netConfigType, 9), SendBufferBytes });
+            setMethod.Invoke(boxedConn, new object[] { Enum.ToObject(netConfigType, 10), SendRateMaxBytes });
+            setMethod.Invoke(boxedConn, new object[] { Enum.ToObject(netConfigType, 11), SendRateMaxBytes });
+
+            _log.LogInfo($"Configured connection {connection.Id}: buffer={SendBufferBytes / 1024}KB, rate={SendRateMaxBytes / 1024}KB/s");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"Failed to configure connection: {ex.Message}");
+        }
+    }
+
+    public Connection? GetConnectionForPeer(string peerId)
+    {
+        lock (_gate)
+        {
+            foreach (var entry in _peerConnections.Values)
+            {
+                if (string.Equals(entry.PeerId, peerId, StringComparison.Ordinal))
+                    return entry.Connection;
+            }
+        }
+
+        return null;
     }
 
     public void SetLobbyData(string key, string value)
@@ -290,6 +360,8 @@ internal sealed class SteamTransport : INetworkTransport, ISocketManager, IConne
 
     void ISocketManager.OnConnected(Connection connection, ConnectionInfo info)
     {
+        ConfigureConnection(connection);
+
         var peerId = info.Identity.SteamId.Value.ToString();
         lock (_gate)
         {
@@ -349,6 +421,8 @@ internal sealed class SteamTransport : INetworkTransport, ISocketManager, IConne
     void IConnectionManager.OnConnected(ConnectionInfo info)
     {
         _isConnected = true;
+        if (_connectionManager != null)
+            ConfigureConnection(_connectionManager.Connection);
         _log.LogInfo("Steam: connected to host relay.");
     }
 
